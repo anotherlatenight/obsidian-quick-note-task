@@ -120,9 +120,23 @@ public enum Validation {
     }
 
     public static func isContained(_ candidate: URL, in root: URL) -> Bool {
-        let candidatePath = candidate.standardizedFileURL.path
-        let rootPath = root.standardizedFileURL.path
+        let candidatePath = resolvedPath(candidate)
+        let rootPath = resolvedPath(root)
         return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
+    }
+
+    private static func resolvedPath(_ url: URL) -> String {
+        let standardizedPath = url.standardizedFileURL.path
+        var currentPath = "/"
+
+        for component in standardizedPath.split(separator: "/") {
+            currentPath = URL(fileURLWithPath: currentPath)
+                .appendingPathComponent(String(component))
+                .resolvingSymlinksInPath()
+                .standardizedFileURL.path
+        }
+
+        return currentPath
     }
 
     public static func sanitizeExclusionText(_ value: String?) -> String {

@@ -47,6 +47,12 @@ jobs:
           RELEASE_VERSION: ${{ steps.meta.outputs.version }}
         run: bash ./scripts/release/build_app_bundle.sh
 
+      - name: Require signed and Gatekeeper-accepted app
+        run: |
+          APP_PATH="$DIST_DIR/$APP_BUNDLE_NAME.app"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+
       - name: Create DMG
         id: dmg
         run: |
@@ -68,10 +74,7 @@ jobs:
           name: DMG ${{ steps.meta.outputs.version }}
           generate_release_notes: false
           body: |
-            Personal-use build (unsigned / unnotarized).
-
-            After copying the app to /Applications, run:
-            xattr -dr com.apple.quarantine "/Applications/ObsidianQuickNoteTask.app"
+            This release passed signature and Gatekeeper checks. Verify the publisher Team ID and release asset digest before installation.
           files: ${{ steps.dmg.outputs.path }}
 
       - name: Update README with DMG link

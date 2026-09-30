@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${REPO:-blamouche/obsidian-quick-note-task}"
+REPO="${REPO:-anotherlatenight/obsidian-quick-note-task}"
 API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 APP_DEST_DIR="/Applications"
+EXPECTED_TEAM_ID="${EXPECTED_TEAM_ID:-}"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -14,29 +15,41 @@ require_cmd() {
 
 require_cmd curl
 require_cmd hdiutil
-require_cmd xattr
 require_cmd python3
 require_cmd ditto
+require_cmd codesign
+require_cmd spctl
+require_cmd shasum
+
+if [[ -z "$EXPECTED_TEAM_ID" ]]; then
+  echo "Set EXPECTED_TEAM_ID to the publisher's verified Apple Developer Team ID before installing." >&2
+  exit 1
+fi
 
 echo "Fetching latest release from ${REPO}..."
 RELEASE_JSON="$(curl -fsSL "$API_URL")"
 
-DMG_URL="$(python3 -c '
+ASSET_METADATA="$(python3 -c '
 import json
 import sys
 
 release = json.load(sys.stdin)
 for asset in release.get("assets", []):
     url = asset.get("browser_download_url", "")
-    if url.endswith(".dmg"):
-        print(url)
+    expected_prefix = "https://github.com/" + sys.argv[1] + "/releases/download/"
+    if url.startswith(expected_prefix) and url.endswith(".dmg"):
+        print(url + "\t" + (asset.get("digest") or ""))
         break
-' <<< "$RELEASE_JSON")"
+' "$REPO" <<< "$RELEASE_JSON")"
 
-if [[ -z "$DMG_URL" ]]; then
-  echo "No DMG asset found in latest release." >&2
+IFS=$'\t' read -r DMG_URL RELEASE_DIGEST <<< "$ASSET_METADATA"
+
+if [[ -z "$DMG_URL" || ! "$RELEASE_DIGEST" =~ ^sha256:[[:xdigit:]]{64}$ ]]; then
+  echo "No DMG with a valid SHA-256 digest found in latest release." >&2
   exit 1
 fi
+
+EXPECTED_SHA256="${RELEASE_DIGEST#sha256:}"
 
 TMP_DIR="$(mktemp -d -t oqnt-install-XXXXXX)"
 DMG_PATH="$TMP_DIR/$(basename "$DMG_URL")"
@@ -52,6 +65,11 @@ trap cleanup EXIT
 
 echo "Downloading DMG..."
 curl -fL "$DMG_URL" -o "$DMG_PATH"
+ACTUAL_SHA256="$(shasum -a 256 "$DMG_PATH" | awk '{print $1}')"
+if [[ "${ACTUAL_SHA256,,}" != "${EXPECTED_SHA256,,}" ]]; then
+  echo "DMG SHA-256 does not match the GitHub release digest." >&2
+  exit 1
+fi
 
 echo "Mounting DMG..."
 ATTACH_PLIST="$TMP_DIR/attach.plist"
@@ -83,23 +101,34 @@ if [[ -z "$APP_SOURCE" ]]; then
   exit 1
 fi
 
+if [[ "$(basename "$APP_SOURCE")" != "ObsidianQuickNoteTask.app" ]]; then
+  echo "Unexpected application bundle in release DMG." >&2
+  exit 1
+fi
+
+echo "Verifying application signature and Gatekeeper assessment..."
+codesign --verify --deep --strict --verbose=2 "$APP_SOURCE"
+SIGNATURE_DETAILS="$(codesign -dv --verbose=4 "$APP_SOURCE" 2>&1)"
+ACTUAL_TEAM_ID="$(printf '%s\n' "$SIGNATURE_DETAILS" | awk -F= '/^TeamIdentifier=/{print $2; exit}')"
+if [[ -z "$ACTUAL_TEAM_ID" || "$ACTUAL_TEAM_ID" != "$EXPECTED_TEAM_ID" ]]; then
+  echo "Application Team ID does not match EXPECTED_TEAM_ID." >&2
+  exit 1
+fi
+spctl --assess --type execute --verbose=2 "$APP_SOURCE"
+
 APP_NAME="$(basename "$APP_SOURCE")"
 DEST_PATH="$APP_DEST_DIR/$APP_NAME"
 
 echo "Installing $APP_NAME to $APP_DEST_DIR..."
-if [[ -w "$APP_DEST_DIR" ]]; then
-  rm -rf "$DEST_PATH"
-  ditto "$APP_SOURCE" "$DEST_PATH"
-else
-  sudo rm -rf "$DEST_PATH"
-  sudo ditto "$APP_SOURCE" "$DEST_PATH"
+if [[ -e "$DEST_PATH" ]]; then
+  echo "An app already exists at $DEST_PATH. Move it aside or remove it manually, then rerun the installer." >&2
+  exit 1
 fi
 
-echo "Removing quarantine attribute..."
-if [[ -w "$DEST_PATH" ]]; then
-  xattr -dr com.apple.quarantine "$DEST_PATH" || true
+if [[ -w "$APP_DEST_DIR" ]]; then
+  ditto "$APP_SOURCE" "$DEST_PATH"
 else
-  sudo xattr -dr com.apple.quarantine "$DEST_PATH" || true
+  sudo ditto "$APP_SOURCE" "$DEST_PATH"
 fi
 
 echo "Done. App installed at: $DEST_PATH"

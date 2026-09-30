@@ -88,4 +88,24 @@ final class ValidationTests: XCTestCase {
             XCTAssertEqual(error as? ValidationError, .taskSourceOutsideVault)
         }
     }
+
+    func testContainmentRejectsSymlinkedDirectoryOutsideVault() throws {
+        let vault = try makeTempDir()
+        let outside = try makeTempDir()
+        let link = vault.appendingPathComponent("linked-outside", isDirectory: true)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+        XCTAssertFalse(Validation.isContained(link.appendingPathComponent("note.md"), in: vault))
+    }
+
+    func testContainmentRejectsSymlinkedFileOutsideVault() throws {
+        let vault = try makeTempDir()
+        let outside = try makeTempDir()
+        let outsideFile = outside.appendingPathComponent("task.md")
+        try Data("- [ ] outside".utf8).write(to: outsideFile)
+        let link = vault.appendingPathComponent("task.md")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outsideFile)
+
+        XCTAssertFalse(Validation.isContained(link, in: vault))
+    }
 }

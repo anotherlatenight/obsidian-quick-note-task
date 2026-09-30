@@ -76,29 +76,22 @@ When a recurring task is completed from the dropdown, the app marks it done and 
 ## Quick Start
 
 1. Download the latest DMG from the section below.
-2. Move `ObsidianQuickNoteTask.app` to `/Applications`.
-3. For personal unsigned builds, run once:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/ObsidianQuickNoteTask.app"
-```
-
-4. Launch the app, open `Settings`, then configure:
+2. Move the signed and notarized `ObsidianQuickNoteTask.app` to `/Applications`.
+3. Launch the app, open `Settings`, then configure:
    - your local Obsidian vault,
    - your default folder where notes/tasks are created.
 
-Or install/update automatically in one command:
+Or install/update automatically in one command. First verify the publisher's Apple Developer Team ID from a trusted source, then set `EXPECTED_TEAM_ID`. The installer checks that ID, the GitHub-published SHA-256 digest, and Gatekeeper before copying. Releases without a matching signature are rejected.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/blamouche/obsidian-quick-note-task/main/scripts/install_latest.sh)
+EXPECTED_TEAM_ID="YOUR_VERIFIED_TEAM_ID" bash <(curl -fsSL https://raw.githubusercontent.com/anotherlatenight/obsidian-quick-note-task/main/scripts/install_latest.sh)
 ```
 
-## Latest DMG Download
+## Verified Release
 
 <!-- DMG_LINK_START -->
 
-Latest DMG: [https://github.com/blamouche/obsidian-quick-note-task/releases/download/1.1.15/ObsidianQuickNoteTask-1.1.15.dmg](https://github.com/blamouche/obsidian-quick-note-task/releases/download/1.1.15/ObsidianQuickNoteTask-1.1.15.dmg)
-Last update: 2026-03-09 (UTC)
+No signed and Gatekeeper-accepted release is available from this fork yet.
 <!-- DMG_LINK_END -->
 
 ## Local Development
