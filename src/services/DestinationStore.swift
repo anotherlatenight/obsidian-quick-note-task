@@ -93,7 +93,9 @@ public final class DestinationStore {
 
         do {
             #if os(macOS)
-            let bookmark = try url.bookmarkData(options: .withSecurityScope,
+            // The app is not sandboxed, so persist a regular bookmark. Security-scoped
+            // bookmarks created by NSOpenPanel may not resolve in this app bundle.
+            let bookmark = try url.bookmarkData(options: [],
                                                 includingResourceValuesForKeys: nil,
                                                 relativeTo: nil)
             defaults.set(bookmark, forKey: key)
@@ -112,8 +114,17 @@ public final class DestinationStore {
 
         #if os(macOS)
         var stale = false
+        if let url = try? URL(resolvingBookmarkData: data,
+                              options: [.withSecurityScope],
+                              relativeTo: nil,
+                              bookmarkDataIsStale: &stale) {
+            return url
+        }
+
+        // Continue to read bookmarks created by the earlier non-sandboxed builds.
+        stale = false
         return try? URL(resolvingBookmarkData: data,
-                        options: [.withSecurityScope],
+                        options: [],
                         relativeTo: nil,
                         bookmarkDataIsStale: &stale)
         #else

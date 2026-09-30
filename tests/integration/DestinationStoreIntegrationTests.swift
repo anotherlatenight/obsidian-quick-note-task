@@ -2,6 +2,10 @@ import XCTest
 @testable import ObsidianQuickNoteTask
 
 final class DestinationStoreIntegrationTests: XCTestCase {
+    private func resolvedPath(_ url: URL?) -> String? {
+        url?.resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
     private func makeTempDir() throws -> URL {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -21,7 +25,7 @@ final class DestinationStoreIntegrationTests: XCTestCase {
         let loaded = second.loadDefaultFolderURL()
 
         XCTAssertNotNil(loaded)
-        XCTAssertEqual(loaded?.path, dir.path)
+        XCTAssertEqual(resolvedPath(loaded), resolvedPath(dir))
     }
 
     func testPersistsVaultAcrossStoreInstances() throws {
@@ -34,7 +38,22 @@ final class DestinationStoreIntegrationTests: XCTestCase {
         try first.saveVaultURL(vault)
 
         let second = DestinationStore(defaults: defaults, key: "destination")
-        XCTAssertEqual(second.loadVaultURL()?.path, vault.path)
+        XCTAssertEqual(resolvedPath(second.loadVaultURL()), resolvedPath(vault))
+    }
+
+    func testLoadsPreviouslySavedSecurityScopedVaultBookmark() throws {
+        let suiteName = "test.destination.legacy-vault.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let vault = try makeTempDir()
+        let bookmark = try vault.bookmarkData(options: .withSecurityScope,
+                                              includingResourceValuesForKeys: nil,
+                                              relativeTo: nil)
+        defaults.set(bookmark, forKey: "obsidian.vault.bookmark")
+
+        let store = DestinationStore(defaults: defaults)
+        XCTAssertEqual(resolvedPath(store.loadVaultURL()), resolvedPath(vault))
     }
 
     func testRejectsInaccessibleDestinationInput() throws {
@@ -62,7 +81,7 @@ final class DestinationStoreIntegrationTests: XCTestCase {
         let destination = try makeTempDir()
         try settings.selectDestination(destination)
 
-        XCTAssertEqual(store.loadDestinationURL(), destination)
+        XCTAssertEqual(resolvedPath(store.loadDestinationURL()), resolvedPath(destination))
     }
 
     func testTaskExclusionTextPersistsAcrossStoreInstances() throws {
